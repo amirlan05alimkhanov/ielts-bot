@@ -1,16 +1,23 @@
-# This is a sample Python script.
+import telebot
 
-# Press Shift+F10 to execute it or replace it with your code.
-# Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
+# Вставь сюда токен, который дал BotFather (в кавычках!)
+token = '8055988079:AAFHOXP907f1OIjk_l2Xx9nOxpvZ4zqqaMI'
 
+# Создаем бота
+bot = telebot.TeleBot(token)
 
-def print_hi(name):
-    # Use a breakpoint in the code line below to debug your script.
-    print(f'Hi, {name}')  # Press Ctrl+F8 to toggle the breakpoint.
+# Эта функция реагирует на команду /start
+@bot.message_handler(commands=['start'])
+def start_message(message):
+    bot.send_message(message.chat.id, "Привет! Я твой помощник по IELTS. Готов учиться?")
 
+# Эта функция повторяет (эхо) любой текст, который ты напишешь
+@bot.message_handler(content_types=['text'])
+def send_text(message):
+    user_text = message.text
+    # Тут мы будем потом добавлять логику, а пока просто повторим
+    bot.send_message(message.chat.id, f"Ты написал: {user_text}")
 
-# Press the green button in the gutter to run the script.
-if __name__ == '__main__':
-    print_hi('PyCharm')
-
-# See PyCharm help at https://www.jetbrains.com/help/pycharm/
+# Запускаем бота (он будет работать вечно, пока ты не нажмешь Stop)
+print("Бот запущен...")
+bot.polling(none_stop=True)
