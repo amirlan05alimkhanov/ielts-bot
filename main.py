@@ -76,6 +76,14 @@ def delete_word(message):
         bot.send_message(message.chat.id, "Напиши, что удалить. Пример: /delete Cat")
 
 
+@bot.message_handler(commands=['info'])
+def show_info(message):
+    bot.send_message(message.chat.id,
+                     f'Я бот-словарь. Версия 1.0. \n'
+                     f'Меня создал amirlan05alimkhanov. \n'
+                     f'Всего слов в словаре: {len(user_words)}')
+
+
 # Этот обработчик ловит ПРОСТО ТЕКСТ (добавление слов)
 @bot.message_handler(content_types=['text'])
 def add_new_word(message):
