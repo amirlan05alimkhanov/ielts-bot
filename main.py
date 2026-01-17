@@ -1,113 +1,129 @@
 import telebot
 import json
 import os
+import random
 
-# 1. Вставь сюда свой токен (он такой же, как вчера)
+# Вставь сюда свой токен
 token = '8055988079:AAFHOXP907f1OIjk_l2Xx9nOxpvZ4zqqaMI'
 
 bot = telebot.TeleBot(token)
 
-# Имя файла, где будет храниться наша "база данных"
 FILE_NAME = 'words.json'
 
 
-# --- ФУНКЦИИ ДЛЯ РАБОТЫ С ФАЙЛОМ ---
-
+# --- ПАМЯТЬ БОТА ---
+# Загрузка слов из файла
 def load_words():
-    """Загружает слова из файла при запуске"""
     if os.path.exists(FILE_NAME):
         with open(FILE_NAME, 'r', encoding='utf-8') as f:
             return json.load(f)
-    return {}  # Если файла нет, возвращаем пустой словарь
+    return {}
 
 
 def save_words(words_dict):
-    """Сохраняет словарь в файл"""
     with open(FILE_NAME, 'w', encoding='utf-8') as f:
-        # indent=4 делает файл красивым и читаемым для человека
         json.dump(words_dict, f, ensure_ascii=False, indent=4)
 
 
-# Загружаем память при старте
 user_words = load_words()
 
+# --- ВРЕМЕННАЯ ПАМЯТЬ ДЛЯ ВИКТОРИНЫ ---
+# Здесь мы будем хранить, кто сейчас играет и какое слово угадывает
+# Формат: {id_пользователя: "правильный_ответ"}
+quiz_users = {}
 
-# --- ЛОГИКА БОТА ---
+
+# --- КОМАНДЫ ---
 
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
     bot.send_message(message.chat.id,
-                     "Привет! Я помогаю учить английский.\n"
+                     "Привет! Я бот для IELTS.\n"
                      "Команды:\n"
-                     "1. Напиши слово и перевод через пробел, чтобы добавить. \n"
-                     "   Пример: Cat Кошка\n"
-                     "2. /list - Показать все слова\n"
-                     "3. /delete <слово> - Удалить слово")
-
-
-@bot.message_handler(commands=['list'])
-def show_list(message):
-    """Показывает список всех слов"""
-    if not user_words:
-        bot.send_message(message.chat.id, "Твой словарь пока пуст! Напиши слово и перевод.")
-        return
-
-    # Формируем красивый список
-    text_message = "📖 Твой словарь:\n"
-    for eng, ru in user_words.items():
-        text_message += f"{eng} — {ru}\n"
-
-    bot.send_message(message.chat.id, text_message)
-
-
-@bot.message_handler(commands=['delete'])
-def delete_word(message):
-    """Удаляет слово. Пример: /delete Cat"""
-    try:
-        # Отрезаем команду /delete и берем слово
-        word_to_delete = message.text.split()[1]
-        if word_to_delete in user_words:
-            del user_words[word_to_delete]
-            save_words(user_words)  # Обязательно сохраняем изменения!
-            bot.send_message(message.chat.id, f"Слово '{word_to_delete}' удалено.")
-        else:
-            bot.send_message(message.chat.id, "Такого слова нет в словаре.")
-    except IndexError:
-        bot.send_message(message.chat.id, "Напиши, что удалить. Пример: /delete Cat")
+                     "📝 Пиши слова: 'Cat Кошка' (чтобы добавить)\n"
+                     "🧠 /quiz - Начать тест (проверка знаний)\n"
+                     "📖 /list - Список слов\n"
+                     "ℹ️ /info - Информация о боте")
 
 
 @bot.message_handler(commands=['info'])
 def show_info(message):
     bot.send_message(message.chat.id,
-                     f'Я бот-словарь. Версия 1.0. \n'
-                     f'Меня создал amirlan05alimkhanov. \n'
-                     f'Всего слов в словаре: {len(user_words)}')
+                     f'IELTS Bot v2.0 (Quiz Mode).\n'
+                     f'Разработчик: amirlan05alimkhanov.\n'
+                     f'Слов в базе: {len(user_words)}')
 
 
-# Этот обработчик ловит ПРОСТО ТЕКСТ (добавление слов)
+@bot.message_handler(commands=['list'])
+def show_list(message):
+    if not user_words:
+        bot.send_message(message.chat.id, "Словарь пуст.")
+        return
+    text = "Твои слова:\n"
+    for eng, ru in user_words.items():
+        text += f"{eng} — {ru}\n"
+    bot.send_message(message.chat.id, text)
+
+
+# --- ЛОГИКА ВИКТОРИНЫ (/quiz) ---
+
+@bot.message_handler(commands=['quiz'])
+def start_quiz(message):
+    if not user_words:
+        bot.send_message(message.chat.id, "Словарь пуст! Добавь слова, прежде чем играть.")
+        return
+
+    # 1. Выбираем случайное английское слово (ключ)
+    random_eng_word = random.choice(list(user_words.keys()))
+    # 2. Берем его перевод
+    russian_translation = user_words[random_eng_word]
+
+    # 3. Запоминаем, что этот пользователь сейчас угадывает именно это слово
+    quiz_users[message.chat.id] = random_eng_word
+
+    # 4. Спрашиваем пользователя
+    bot.send_message(message.chat.id, f"🤔 Как переводится: **{russian_translation}**?")
+
+
+# --- ОБРАБОТКА ТЕКСТА (ОТВЕТЫ И ДОБАВЛЕНИЕ) ---
+
 @bot.message_handler(content_types=['text'])
-def add_new_word(message):
-    try:
-        # Пытаемся разбить сообщение на 2 части: Слово и Перевод
-        text_parts = message.text.split()
+def handle_text(message):
+    user_id = message.chat.id
+    text = message.text.strip()
 
-        # Если слов меньше 2 (например, просто "Cat"), ругаемся
-        if len(text_parts) < 2:
-            bot.send_message(message.chat.id, "Нужно два слова! Пример: Dog Собака")
-            return
+    # СЦЕНАРИЙ 1: Пользователь в режиме викторины (отвечает на вопрос)
+    if user_id in quiz_users:
+        correct_answer = quiz_users[user_id]  # Вспоминаем правильный ответ
 
-        eng_word = text_parts[0]
-        translation = " ".join(text_parts[1:])  # Все остальное - перевод
+        # Сравниваем (приводим к нижнему регистру, чтобы Apple и apple были равны)
+        if text.lower() == correct_answer.lower():
+            bot.send_message(user_id, f"✅ Правильно! Это {correct_answer}.")
+        else:
+            bot.send_message(user_id, f"❌ Неверно. Правильный ответ: {correct_answer}")
 
-        # Записываем в память
-        user_words[eng_word] = translation
-        save_words(user_words)  # Сохраняем в файл
+        # Удаляем пользователя из режима викторины (игра закончена)
+        del quiz_users[user_id]
+        bot.send_message(user_id, "Пиши /quiz, чтобы сыграть еще раз.")
 
-        bot.send_message(message.chat.id, f"✅ Добавлено: {eng_word} — {translation}")
+    # СЦЕНАРИЙ 2: Пользователь просто добавляет новое слово
+    else:
+        try:
+            parts = text.split()
+            if len(parts) < 2:
+                bot.send_message(user_id, "Чтобы добавить слово, пиши: English Русский")
+                return
 
-    except Exception as e:
-        bot.send_message(message.chat.id, "Что-то пошло не так. Попробуй еще раз.")
+            eng = parts[0]
+            ru = " ".join(parts[1:])
+
+            user_words[eng] = ru
+            save_words(user_words)
+            bot.send_message(user_id, f"💾 Сохранено: {eng} — {ru}")
+
+        except Exception:
+            bot.send_message(user_id, "Ошибка. Попробуй еще раз.")
 
 
-print("Бот с памятью запущен...")
+print("Бот с викториной запущен...")
 bot.polling(none_stop=True)
